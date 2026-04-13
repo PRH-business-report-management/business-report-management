@@ -1,0 +1,409 @@
+"use client";
+
+import { useSessionStore } from "@/store/sessionStore";
+import { useIsAuthenticated } from "@azure/msal-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useAccessToken } from "@/hooks/useAccessToken";
+import { authenticatedFetch } from "@/lib/api/authenticatedFetch";
+import {
+  ReceivedInstructionsTable,
+  type ReceivedInstructionListSortKey,
+} from "@/components/instructions/ReceivedInstructionsTable";
+import { DashboardConfirmLink } from "@/components/ui/dashboardConfirmLink";
+import { ListPagination } from "@/components/ui/ListPagination";
+import { ListSortTh, type ListSortDir } from "@/components/ui/ListSortTh";
+import {
+  formatListUpdatedAt,
+  formatReportBusinessDateTime,
+  formatSlashDateTime,
+} from "@/lib/time/formatJa";
+import type { DailyReport, DirectoryUser, WorkInstruction } from "@/types/models";
+import {
+  InstructionDocumentIcon,
+  ReportDocumentIcon,
+} from "@/components/ui/DocumentTypeIcons";
+
+const RECEIVED_REPORTS_PAGE = 10;
+const RECEIVED_INSTRUCTIONS_PAGE = 5;
+
+type DashReportSortKey = "author" | "date" | "updated";
+
+function workStyleRank(s: WorkInstruction["workStyle"]): number {
+  if (s === "office") return 0;
+  if (s === "remote") return 1;
+  if (s === "direct") return 2;
+  return 9;
+}
+
+export default function DashboardPage() {
+  const user = useSessionStore((s) => s.user);
+  const sessionError = useSessionStore((s) => s.sessionError);
+  const authed = useIsAuthenticated();
+  const router = useRouter();
+  const { getToken } = useAccessToken();
+  const [receivedInstructions, setReceivedInstructions] = useState<
+    WorkInstruction[]
+  >([]);
+  const [reports, setReports] = useState<DailyReport[]>([]);
+  const [directory, setDirectory] = useState<DirectoryUser[]>([]);
+  const [instrErr, setInstrErr] = useState<string | null>(null);
+  const [reportErr, setReportErr] = useState<string | null>(null);
+  const [reportPage, setReportPage] = useState(1);
+  const [instructionPage, setInstructionPage] = useState(1);
+  const [reportSortKey, setReportSortKey] =
+    useState<DashReportSortKey>("updated");
+  const [reportSortDir, setReportSortDir] = useState<ListSortDir>("desc");
+  const [instrSortKey, setInstrSortKey] =
+    useState<ReceivedInstructionListSortKey>("updated");
+  const [instrSortDir, setInstrSortDir] = useState<ListSortDir>("desc");
+
+  useEffect(() => {
+    if (!authed) router.replace("/login");
+  }, [authed, router]);
+
+  useEffect(() => {
+    if (!user) return;
+    void (async () => {
+      setInstrErr(null);
+      setReportErr(null);
+      try {
+        const [insRes, repRes, dirRes] = await Promise.all([
+          authenticatedFetch(getToken, "/api/work-instructions"),
+          authenticatedFetch(getToken, "/api/daily-reports"),
+          authenticatedFetch(getToken, "/api/users"),
+        ]);
+        const insData = await insRes.json();
+        if (!insRes.ok) throw new Error(insData.error);
+        const insItems = (insData.items ?? []) as WorkInstruction[];
+        setReceivedInstructions(
+          insItems.filter((w) => w.targetUserId === user.id)
+        );
+
+        const repData = await repRes.json();
+        if (!repRes.ok) throw new Error(repData.error);
+        setReports((repData.items ?? []) as DailyReport[]);
+
+        const dirData = await dirRes.json();
+        if (dirRes.ok) {
+          setDirectory((dirData.items ?? []) as DirectoryUser[]);
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "読み込みに失敗しました";
+        setInstrErr(msg);
+        setReportErr(msg);
+      }
+    })();
+  }, [getToken, user]);
+
+  useEffect(() => {
+    setReportPage(1);
+  }, [reports, user?.id, reportSortKey, reportSortDir]);
+
+  useEffect(() => {
+    setInstructionPage(1);
+  }, [receivedInstructions, user?.id, instrSortKey, instrSortDir]);
+
+  const nameById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of directory) {
+      m.set(d.id, d.displayName || d.email || d.id);
+    }
+    return m;
+  }, [directory]);
+
+  function cycleReportSort(key: DashReportSortKey) {
+    if (reportSortKey === key) {
+      setReportSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setReportSortKey(key);
+      setReportSortDir(key === "author" ? "asc" : "desc");
+    }
+  }
+
+  function cycleInstrSort(key: ReceivedInstructionListSortKey) {
+    if (instrSortKey === key) {
+      setInstrSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setInstrSortKey(key);
+      const descDefault =
+        key === "targetDate" || key === "updated" || key === "workStyle";
+      setInstrSortDir(
+        key === "counterparty" ? "asc" : descDefault ? "desc" : "asc"
+      );
+    }
+  }
+
+  const submissionNotificationBase = useMemo(() => {
+    if (!user) return [];
+    return reports.filter(
+      (r) =>
+        r.submissionTargetId === user.id &&
+        r.userId !== user.id &&
+        r.submissionTargetId
+    );
+  }, [reports, user]);
+
+  const sortedSubmissionReports = useMemo(() => {
+    const list = [...submissionNotificationBase];
+    const mult = reportSortDir === "asc" ? 1 : -1;
+    const nm = (id: string) =>
+      nameById.get(id) ?? "（ユーザー名未取得）";
+    list.sort((a, b) => {
+      let c = 0;
+      switch (reportSortKey) {
+        case "author":
+          c = nm(a.userId).localeCompare(nm(b.userId), "ja");
+          break;
+        case "date":
+          c = a.date.localeCompare(b.date);
+          break;
+        case "updated": {
+          const pa = Date.parse(a.submittedAt || "");
+          const pb = Date.parse(b.submittedAt || "");
+          const fa = Number.isFinite(pa);
+          const fb = Number.isFinite(pb);
+          if (!fa && !fb) c = a.date.localeCompare(b.date);
+          else if (!fa) c = 1;
+          else if (!fb) c = -1;
+          else if (pa !== pb) c = pa - pb;
+          else c = a.date.localeCompare(b.date);
+          break;
+        }
+        default:
+          return 0;
+      }
+      return c * mult;
+    });
+    return list;
+  }, [
+    submissionNotificationBase,
+    reportSortKey,
+    reportSortDir,
+    nameById,
+  ]);
+
+  const reportTotalPages = Math.max(
+    1,
+    Math.ceil(sortedSubmissionReports.length / RECEIVED_REPORTS_PAGE)
+  );
+  const safeReportPage = Math.min(Math.max(1, reportPage), reportTotalPages);
+  const displayedSubmissionReports = useMemo(
+    () =>
+      sortedSubmissionReports.slice(
+        (safeReportPage - 1) * RECEIVED_REPORTS_PAGE,
+        safeReportPage * RECEIVED_REPORTS_PAGE
+      ),
+    [sortedSubmissionReports, safeReportPage]
+  );
+
+  const sortedReceivedInstructions = useMemo(() => {
+    const list = [...receivedInstructions];
+    const mult = instrSortDir === "asc" ? 1 : -1;
+    const cpName = (w: WorkInstruction) =>
+      nameById.get(w.adminId) ?? `${w.adminId.slice(0, 8)}…`;
+    list.sort((a, b) => {
+      let c = 0;
+      switch (instrSortKey) {
+        case "counterparty":
+          c = cpName(a).localeCompare(cpName(b), "ja");
+          break;
+        case "workStyle":
+          c = workStyleRank(a.workStyle) - workStyleRank(b.workStyle);
+          break;
+        case "targetDate":
+          c = (a.targetDate || "").localeCompare(b.targetDate || "");
+          break;
+        case "updated": {
+          const pa = Date.parse(a.submittedAt || "");
+          const pb = Date.parse(b.submittedAt || "");
+          const fa = Number.isFinite(pa);
+          const fb = Number.isFinite(pb);
+          if (!fa && !fb) {
+            c = (a.targetDate || "").localeCompare(b.targetDate || "");
+          } else if (!fa) c = 1;
+          else if (!fb) c = -1;
+          else c = pa - pb;
+          break;
+        }
+        default:
+          return 0;
+      }
+      return c * mult;
+    });
+    return list;
+  }, [receivedInstructions, instrSortKey, instrSortDir, nameById]);
+
+  const instrTotalPages = Math.max(
+    1,
+    Math.ceil(sortedReceivedInstructions.length / RECEIVED_INSTRUCTIONS_PAGE)
+  );
+  const safeInstrPage = Math.min(Math.max(1, instructionPage), instrTotalPages);
+  const displayedReceivedInstructions = useMemo(
+    () =>
+      sortedReceivedInstructions.slice(
+        (safeInstrPage - 1) * RECEIVED_INSTRUCTIONS_PAGE,
+        safeInstrPage * RECEIVED_INSTRUCTIONS_PAGE
+      ),
+    [sortedReceivedInstructions, safeInstrPage]
+  );
+
+  if (sessionError) {
+    return (
+      <div className="space-y-3 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <p className="font-medium">セッションを取得できませんでした</p>
+        <p className="whitespace-pre-wrap">{sessionError}</p>
+        <p className="text-zinc-600">
+          Microsoft でのサインインはできています。SharePoint のサイト ID・リスト ID、列名、API
+          の管理者同意を確認してください。
+        </p>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <p className="text-sm text-zinc-500">セッションを取得しています…</p>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <h1 className="text-2xl font-semibold text-zinc-900">
+        ようこそ、{user.displayName ?? "利用者"} さん
+      </h1>
+
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <ReportDocumentIcon
+            className="h-6 w-6 shrink-0 text-sky-600"
+            aria-hidden
+          />
+          受信した業務報告書
+        </h2>
+        {reportErr && (
+          <p className="text-sm text-red-600" role="alert">
+            {reportErr}
+          </p>
+        )}
+        {submissionNotificationBase.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            受信した業務報告書はまだありません。
+          </p>
+        ) : (
+          <>
+            <p className="text-xs text-slate-500">
+              列見出しをクリックすると並び替えできます。
+            </p>
+            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+              <table className="min-w-full text-left text-sm">
+                <thead className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                  <tr>
+                    <ListSortTh
+                      className="px-4 py-3"
+                      label="記入者"
+                      active={reportSortKey === "author"}
+                      dir={reportSortDir}
+                      onClick={() => cycleReportSort("author")}
+                    />
+                    <ListSortTh
+                      className="px-4 py-3"
+                      label="報告日"
+                      active={reportSortKey === "date"}
+                      dir={reportSortDir}
+                      onClick={() => cycleReportSort("date")}
+                    />
+                    <ListSortTh
+                      className="px-4 py-3"
+                      label="更新日"
+                      active={reportSortKey === "updated"}
+                      dir={reportSortDir}
+                      onClick={() => cycleReportSort("updated")}
+                    />
+                    <th className="w-28 px-4 py-3 font-medium" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedSubmissionReports.map((r) => {
+                    const author =
+                      nameById.get(r.userId) ?? "（ユーザー名未取得）";
+                    return (
+                      <tr key={r.id} className="border-b border-slate-100">
+                        <td className="px-4 py-3 font-medium text-slate-900">
+                          {author}
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-slate-800">
+                          {formatReportBusinessDateTime(r)}
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-slate-800">
+                          {formatListUpdatedAt(
+                            r.createdAt ?? "",
+                            r.submittedAt ?? ""
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <DashboardConfirmLink
+                            href={`/reports/${r.id}/edit?notify=1`}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <ListPagination
+              page={safeReportPage}
+              pageSize={RECEIVED_REPORTS_PAGE}
+              total={sortedSubmissionReports.length}
+              onPageChange={setReportPage}
+            />
+          </>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-slate-900">
+          <InstructionDocumentIcon
+            className="h-6 w-6 shrink-0 text-amber-600"
+            aria-hidden
+          />
+          受信した業務指示書
+        </h2>
+        {instrErr && (
+          <p className="text-sm text-red-600" role="alert">
+            {instrErr}
+          </p>
+        )}
+        {receivedInstructions.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            受信した業務指示書はまだありません。
+          </p>
+        ) : (
+          <>
+            <p className="text-xs text-slate-500">
+              列見出しをクリックすると並び替えできます。
+            </p>
+            <ReceivedInstructionsTable
+              items={displayedReceivedInstructions}
+              nameById={nameById}
+              counterpartyLabel="指示者"
+              counterpartyId={(w) => w.adminId}
+              sortHeader={{
+                activeKey: instrSortKey,
+                dir: instrSortDir,
+                onColumnClick: cycleInstrSort,
+              }}
+            />
+            <ListPagination
+              page={safeInstrPage}
+              pageSize={RECEIVED_INSTRUCTIONS_PAGE}
+              total={sortedReceivedInstructions.length}
+              onPageChange={setInstructionPage}
+            />
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
