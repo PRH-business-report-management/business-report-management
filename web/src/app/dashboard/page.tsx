@@ -119,18 +119,6 @@ export default function DashboardPage() {
     return uid ? byUserSeen[uid] : undefined;
   }, [byUserSeen, user?.id]);
 
-  const unseenSubmissionReportIds = useMemo(() => {
-    const m = new Set<string>();
-    const seen = seenForMe?.reports ?? {};
-    for (const r of submissionNotificationBase) {
-      const updatedMs = getItemUpdatedMs(r.createdAt, r.submittedAt);
-      const seenAt = typeof seen[r.id] === "number" ? seen[r.id] : 0;
-      if (updatedMs > 0 && seenAt < updatedMs) m.add(r.id);
-      else if (updatedMs === 0 && !seen[r.id]) m.add(r.id);
-    }
-    return m;
-  }, [seenForMe?.reports, submissionNotificationBase]);
-
   const unseenInstructionIds = useMemo(() => {
     const m = new Set<string>();
     const seen = seenForMe?.instructions ?? {};
@@ -174,6 +162,18 @@ export default function DashboardPage() {
         r.submissionTargetId
     );
   }, [reports, user]);
+
+  const unseenSubmissionReportIds = useMemo(() => {
+    const m = new Set<string>();
+    const seen = seenForMe?.reports ?? {};
+    for (const r of submissionNotificationBase) {
+      const updatedMs = getItemUpdatedMs(r.createdAt, r.submittedAt);
+      const seenAt = typeof seen[r.id] === "number" ? seen[r.id] : 0;
+      if (updatedMs > 0 && seenAt < updatedMs) m.add(r.id);
+      else if (updatedMs === 0 && !seen[r.id]) m.add(r.id);
+    }
+    return m;
+  }, [seenForMe?.reports, submissionNotificationBase]);
 
   const sortedSubmissionReports = useMemo(() => {
     const list = [...submissionNotificationBase];
