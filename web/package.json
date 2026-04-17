@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "bootstrap:local": "node scripts/bootstrap-local.mjs",
+    "verify:env": "node scripts/verify-local-env.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
