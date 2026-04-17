@@ -44,3 +44,5 @@ npm run dev
 ## 技術スタック
 
 Next.js（App Router）、Microsoft Graph、MSAL、SharePoint リスト連携。詳細は `env.example` のコメントを参照してください。
+
+（自動デプロイ確認用の更新）
