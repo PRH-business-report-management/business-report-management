@@ -100,8 +100,6 @@ export function DailyReportForm({
   authorDisplayName = "",
   submitLabel = "保存する",
   formActionsExtra,
-  autoSave,
-  autoSaveDelayMs = 900,
 }: {
   initial?: Partial<DailyReport> | null;
   onSubmit: (values: DailyReportFormValues) => Promise<void>;
@@ -114,9 +112,6 @@ export function DailyReportForm({
   submitLabel?: string;
   /** 送信の左隣に並べるボタンなど（例: 複製） */
   formActionsExtra?: ReactNode;
-  /** 編集画面用: 入力中に自動保存（PATCH） */
-  autoSave?: boolean;
-  autoSaveDelayMs?: number;
 }) {
   const printRef = useRef<HTMLDivElement>(null);
   const [printTitle, setPrintTitle] = useState("");
@@ -153,35 +148,6 @@ export function DailyReportForm({
     resolver: zodResolver(schema),
     defaultValues: defaults,
   });
-
-  const autoSaveTimer = useRef<number | null>(null);
-  const lastAutoSaved = useRef<string>("");
-  useEffect(() => {
-    if (!autoSave) return;
-    if (!initial?.id || initial.id === "preview") return;
-    const sub = form.watch(() => {
-      if (submitting) return;
-      if (!form.formState.isDirty) return;
-      if (autoSaveTimer.current != null) {
-        window.clearTimeout(autoSaveTimer.current);
-      }
-      autoSaveTimer.current = window.setTimeout(() => {
-        void form.handleSubmit(async (v) => {
-          const key = JSON.stringify(v);
-          if (key === lastAutoSaved.current) return;
-          lastAutoSaved.current = key;
-          await onSubmit(v);
-        })();
-      }, autoSaveDelayMs);
-    });
-    return () => {
-      sub.unsubscribe();
-      if (autoSaveTimer.current != null) {
-        window.clearTimeout(autoSaveTimer.current);
-        autoSaveTimer.current = null;
-      }
-    };
-  }, [autoSave, autoSaveDelayMs, form, initial?.id, onSubmit, submitting]);
 
   useEffect(() => {
     const ymd = String(form.getValues("date") || "").slice(0, 10).trim();

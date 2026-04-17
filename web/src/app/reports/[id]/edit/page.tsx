@@ -190,7 +190,6 @@ export default function EditReportPage() {
         initial={report}
         onSubmit={save}
         submitting={busy}
-        autoSave
         userOptions={mergedUserOptions}
         authorDisplayName={authorDisplayName}
         submitLabel="更新"

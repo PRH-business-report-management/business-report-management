@@ -55,8 +55,6 @@ export function WorkInstructionForm({
   instructorDisplayName = "",
   submitLabel = "保存する",
   formActionsExtra,
-  autoSave,
-  autoSaveDelayMs = 900,
 }: {
   initial?: Partial<WorkInstruction> | null;
   users: UserOption[];
@@ -70,9 +68,6 @@ export function WorkInstructionForm({
   instructorDisplayName?: string;
   submitLabel?: string;
   formActionsExtra?: ReactNode;
-  /** 編集画面用: 入力中に自動保存（PATCH） */
-  autoSave?: boolean;
-  autoSaveDelayMs?: number;
 }) {
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -98,36 +93,6 @@ export function WorkInstructionForm({
     resolver: zodResolver(schema),
     defaultValues: defaults,
   });
-
-  const autoSaveTimer = useRef<number | null>(null);
-  const lastAutoSaved = useRef<string>("");
-  useEffect(() => {
-    if (!autoSave) return;
-    if (readOnly) return;
-    if (!initial?.id || initial.id === "preview") return;
-    const sub = form.watch(() => {
-      if (submitting) return;
-      if (!form.formState.isDirty) return;
-      if (autoSaveTimer.current != null) {
-        window.clearTimeout(autoSaveTimer.current);
-      }
-      autoSaveTimer.current = window.setTimeout(() => {
-        void form.handleSubmit(async (v) => {
-          const key = JSON.stringify(v);
-          if (key === lastAutoSaved.current) return;
-          lastAutoSaved.current = key;
-          await onSubmit(v);
-        })();
-      }, autoSaveDelayMs);
-    });
-    return () => {
-      sub.unsubscribe();
-      if (autoSaveTimer.current != null) {
-        window.clearTimeout(autoSaveTimer.current);
-        autoSaveTimer.current = null;
-      }
-    };
-  }, [autoSave, autoSaveDelayMs, form, initial?.id, onSubmit, readOnly, submitting]);
 
   useEffect(() => {
     form.reset(defaults);

@@ -195,7 +195,6 @@ export default function EditInstructionPage() {
         users={userOptionsForForm}
         onSubmit={save}
         submitting={busy}
-        autoSave
         lockTargetUserSelect={lockTargetUser}
         readOnly={readOnly}
         instructorDisplayName={instructorDisplayName}
