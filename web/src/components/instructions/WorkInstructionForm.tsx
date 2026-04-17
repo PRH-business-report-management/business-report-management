@@ -203,8 +203,8 @@ export function WorkInstructionForm({
                 <div>
                   <FieldLabel>更新日</FieldLabel>
                   <p className="mt-1.5 text-sm text-slate-800">
-                    {initial.submittedAt
-                      ? formatSlashDateTime(initial.submittedAt)
+                    {shouldShowUpdatedAt(initial.createdAt, initial.submittedAt)
+                      ? formatSlashDateTime(initial.submittedAt ?? "")
                       : ""}
                   </p>
                 </div>
@@ -344,4 +344,19 @@ export function WorkInstructionForm({
       </div>
     </FormShell>
   );
+}
+
+function shouldShowUpdatedAt(
+  createdAt: string | undefined,
+  submittedAt: string | undefined
+): boolean {
+  const s = (submittedAt ?? "").trim();
+  if (!s) return false;
+  const c = (createdAt ?? "").trim();
+  if (!c) return true;
+  const pc = Date.parse(c);
+  const ps = Date.parse(s);
+  if (!Number.isFinite(pc) || !Number.isFinite(ps)) return s !== c;
+  // 作成直後は createdAt と lastModified(submittedAt) が同値になりがちなので、その場合は「未更新」とみなす
+  return Math.abs(ps - pc) > 1000;
 }
