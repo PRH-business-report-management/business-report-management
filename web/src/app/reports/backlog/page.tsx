@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIsAuthenticated } from "@azure/msal-react";
 import { useSessionStore } from "@/store/sessionStore";
 import { useHandheldLines } from "@/hooks/useHandheldLines";
 import { defaultHandheldLine } from "@/lib/storage/handheldProjects";
 import { ReportsSubNav } from "@/components/reports/ReportsSubNav";
+import { useUnsavedChangesStore } from "@/store/unsavedChangesStore";
 import {
   FieldLabel,
   FormShell,
@@ -30,10 +31,48 @@ export default function HandheldBacklogPage() {
     clearSaveError,
   } = useHandheldLines(user?.id);
   const [savedNote, setSavedNote] = useState(false);
+  const setDirty = useUnsavedChangesStore((s) => s.setDirty);
+  const lastSavedRef = useRef<string>("");
+
+  const snapshot = useMemo(() => {
+    // content は廃止済みなので、比較対象は番号/案件名だけで十分
+    const compact = lines.map((l) => ({
+      projectNumber: (l.projectNumber ?? "").trim(),
+      projectName: (l.projectName ?? "").trim(),
+    }));
+    return JSON.stringify(compact);
+  }, [lines]);
 
   useEffect(() => {
     if (!authed) router.replace("/login");
   }, [authed, router]);
+
+  // 初回ロード完了時（またはユーザー切り替え時）に「保存済みスナップショット」を更新
+  useEffect(() => {
+    if (!user?.id) return;
+    if (loading) return;
+    lastSavedRef.current = snapshot;
+    setDirty(false);
+  }, [loading, setDirty, snapshot, user?.id]);
+
+  // 編集中フラグ（ページ遷移の確認に使う）
+  useEffect(() => {
+    if (loading) return;
+    const dirty = snapshot !== lastSavedRef.current;
+    setDirty(dirty);
+  }, [loading, setDirty, snapshot]);
+
+  // タブ閉じ/リロード時も警告（未保存のときだけ）
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (loading) return;
+      if (snapshot === lastSavedRef.current) return;
+      e.preventDefault();
+      e.returnValue = "";
+    }
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [loading, snapshot]);
 
   function addRow() {
     setLines((prev) => [...prev, defaultHandheldLine()]);
@@ -92,6 +131,9 @@ export default function HandheldBacklogPage() {
               void (async () => {
                 try {
                   await persist();
+                  // 保存が成功したら「保存済み」を更新
+                  lastSavedRef.current = snapshot;
+                  setDirty(false);
                   setSavedNote(true);
                   window.setTimeout(() => setSavedNote(false), 2500);
                 } catch {
