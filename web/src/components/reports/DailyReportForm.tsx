@@ -617,7 +617,7 @@ export function DailyReportForm({
           title="明日の作業予定"
           description="番号・案件名・内容を行で追加できます。手持ち案件タブの内容をドロップダウンから呼び出せます。"
           dense
-          className="border-pink-200/80 bg-pink-50 ring-pink-100/70"
+          className="border-pink-200 bg-pink-100/60 ring-pink-200/60"
         >
           <div className="flex justify-end">
             <button
@@ -633,7 +633,7 @@ export function DailyReportForm({
             {tomorrowFields.map((f, i) => (
               <div
                 key={f.id}
-                className="rounded-lg border border-pink-100/90 bg-white/80 p-3"
+                className="rounded-lg border border-pink-200/80 bg-pink-50/70 p-3"
               >
                 <p className="mb-2 text-xs font-semibold text-slate-600">
                   行 {i + 1}
