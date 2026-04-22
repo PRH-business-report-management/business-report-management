@@ -33,7 +33,9 @@ export function useHandheldLines(userId: string | undefined) {
       return;
     }
 
-    setLines(readHandheldLines(userId));
+    // 一瞬ローカル（過去の値）を表示してしまうのを避けるため、
+    // まずはローディング状態にして、サーバー/ローカルの確定後に描画する。
+    setLines([defaultHandheldLine()]);
     setPersisted("loading");
     setLoadError(null);
 
@@ -55,16 +57,12 @@ export function useHandheldLines(userId: string | undefined) {
           const fromServer = Array.isArray(data.lines) ? data.lines : [];
           const hasServer =
             handheldSnapshotForReport(fromServer).length > 0;
-          const local = readHandheldLines(userId);
-          const hasLocal = handheldSnapshotForReport(local).length > 0;
           setLines(
             hasServer
               ? fromServer.length > 0
                 ? fromServer
                 : [defaultHandheldLine()]
-              : hasLocal
-                ? local
-                : [defaultHandheldLine()]
+              : [defaultHandheldLine()]
           );
           setPersisted("sharepoint");
         } else {
@@ -122,7 +120,7 @@ export function useHandheldLines(userId: string | undefined) {
       return;
     }
     setPersisted("loading");
-    setLines(readHandheldLines(userId));
+    setLines([defaultHandheldLine()]);
     void (async () => {
       try {
         const res = await authenticatedFetch(getToken, "/api/handheld-projects");
