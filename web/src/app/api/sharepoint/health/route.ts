@@ -2,6 +2,7 @@ import { bearerFromRequest, graphRequest } from "@/lib/graph/client";
 import { getEffectiveUser } from "@/lib/graph/effectiveUser";
 import {
   getListIdDailyReports,
+  getListIdHandheldProjects,
   getListIdWorkInstructions,
   getSharePointSiteId,
 } from "@/lib/graph/env";
@@ -61,6 +62,16 @@ export async function GET(req: Request) {
 
     await probeList("listDailyReports", dailyListId);
     await probeList("listWorkInstructions", instrListId);
+
+    const handheldListId = getListIdHandheldProjects();
+    if (handheldListId) {
+      await probeList("listHandheldProjects", handheldListId);
+    } else {
+      steps.listHandheldProjects = {
+        ok: true,
+        detail: "skipped（SHAREPOINT_LIST_HANDHELD_PROJECTS_ID 未設定）",
+      };
+    }
 
     const allOk = Object.values(steps).every((s) => s.ok);
     return Response.json({

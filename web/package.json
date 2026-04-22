@@ -9,8 +9,9 @@
     "bootstrap:local": "node scripts/bootstrap-local.mjs",
     "pack:zip": "node scripts/pack-handoff-zip.mjs",
     "verify:env": "node scripts/verify-local-env.mjs",
-    "dev": "next dev",
-    "dev:lan": "next dev -H 0.0.0.0",
+    "dev": "next dev --webpack",
+    "dev:lan": "next dev --webpack -H 0.0.0.0",
+    "dev:turbo": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

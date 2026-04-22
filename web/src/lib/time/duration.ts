@@ -96,3 +96,47 @@ export function minutesBetween(start: string, end: string): number {
 export function minutesToHoursDecimal(mins: number): number {
   return Math.round((mins / 60) * 100) / 100;
 }
+
+/** 15分刻みの「分」候補 */
+export const QUARTER_MINUTES = ["00", "15", "30", "45"] as const;
+
+/** 出社・退勤用: 06〜26 時 */
+export function shiftHourSelectValues(): string[] {
+  const out: string[] = [];
+  for (let h = 6; h <= 26; h++) {
+    out.push(String(h).padStart(2, "0"));
+  }
+  return out;
+}
+
+/** タスク開始・終了用: 00〜23 時 */
+export function taskHourSelectValues(): string[] {
+  const out: string[] = [];
+  for (let h = 0; h <= 23; h++) {
+    out.push(String(h).padStart(2, "0"));
+  }
+  return out;
+}
+
+/** "HH:mm" または空を 時・分（2桁）に分解 */
+export function splitClockHm(t: string): { h: string; m: string } {
+  const s = (t ?? "").trim();
+  if (!s) return { h: "", m: "" };
+  const m = /^(\d{1,2}):(\d{2})$/.exec(s);
+  if (!m) return { h: "", m: "" };
+  return {
+    h: String(parseInt(m[1]!, 10)).padStart(2, "0"),
+    m: m[2]!,
+  };
+}
+
+/** 時・分から "HH:mm" を組み立て（空のときは ""） */
+export function joinClockHm(h: string, m: string): string {
+  const hs = (h ?? "").trim();
+  const ms = (m ?? "").trim();
+  if (!hs) return "";
+  const hn = parseInt(hs, 10);
+  const mn = parseInt(ms, 10);
+  if (Number.isNaN(hn) || Number.isNaN(mn)) return "";
+  return `${String(hn).padStart(2, "0")}:${String(mn).padStart(2, "0")}`;
+}

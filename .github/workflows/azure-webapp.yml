@@ -1,4 +1,11 @@
 # 共用 Web（本番）向け: App Service 名は Azure 側と合わせて変更してください（例: brm-jpe-prod）
+#
+# よくある失敗:
+# - GitHub の Repository secrets に AZURE_WEBAPP_PUBLISH_PROFILE が無い（取得: Azure Portal → App Service → Get publish profile）
+# - Azure App Service の「構成 → アプリケーション設定」に .env と同様の変数が無く、起動後に API が失敗する（ビルドは通る）
+# - Linux App Service のスタートアップ: 既定で node server.js が使われない場合は「構成」で
+#   スタートアップ コマンド例: node server.js（デプロイ zip のルートに server.js があること）
+# - このワークフローは VERCEL を設定しないため next build は standalone を出力します（next.config.ts 参照）
 name: Deploy web to Azure App Service
 
 on:
@@ -31,6 +38,12 @@ jobs:
           npm run build
           cp -r public .next/standalone/
           cp -r .next/static .next/standalone/.next/static
+
+      - name: Verify standalone output
+        working-directory: web
+        run: |
+          test -f .next/standalone/server.js || { echo "::error::Missing .next/standalone/server.js (next build did not emit standalone)"; exit 1; }
+          test -d .next/standalone/.next/static || { echo "::error::Missing .next/standalone/.next/static — check copy step in workflow"; exit 1; }
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3

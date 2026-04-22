@@ -75,3 +75,23 @@ export function buildWorkInstructionFieldEnvLines(
     .sort(([a], [b]) => a.localeCompare(b, "en"))
     .map(([k, v]) => `${k}=${v}`);
 }
+
+/** 手持ち案件リスト（SharePoint 専用リスト） */
+const HANDHELD_DISPLAY_TO_ENV: Record<string, string> = {
+  名前: "SHAREPOINT_HP_FIELD_USER_ID",
+  案件一覧: "SHAREPOINT_HP_FIELD_LINES_JSON",
+};
+
+export function buildHandheldFieldEnvLines(
+  columns: ListColumnMeta[]
+): string[] {
+  const byEnv = new Map<string, string>();
+  for (const c of columns) {
+    const label = (c.displayName ?? "").trim();
+    const envKey = HANDHELD_DISPLAY_TO_ENV[label];
+    if (envKey) byEnv.set(envKey, c.name);
+  }
+  return [...byEnv.entries()]
+    .sort(([a], [b]) => a.localeCompare(b, "en"))
+    .map(([k, v]) => `${k}=${v}`);
+}

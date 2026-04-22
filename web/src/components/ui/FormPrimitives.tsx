@@ -20,9 +20,7 @@ export function FormShell({
   className?: string;
 }) {
   return (
-    <div
-      className={`relative mx-auto max-w-3xl space-y-8 ${className}`}
-    >
+    <div className={`relative mx-auto max-w-3xl space-y-8 ${className}`}>
       {children}
     </div>
   );
@@ -32,24 +30,38 @@ export function FormSection({
   title,
   description,
   children,
+  className = "",
+  dense = false,
 }: {
   title: string;
   description?: string;
   children: ReactNode;
+  /** 余白を詰めてフォームをスリムに */
+  dense?: boolean;
+  /** section ルートに付与（背景色など） */
+  className?: string;
 }) {
+  const pad = dense ? "p-4" : "p-6";
+  const headPb = dense ? "pb-2" : "pb-3";
+  const bodyGap = dense ? "mt-3 space-y-3" : "mt-5 space-y-5";
+  const descMt = dense ? "mt-0.5" : "mt-1";
   return (
-    <section className="rounded-xl border border-slate-200/80 bg-white p-6 shadow-sm ring-1 ring-slate-100">
-      <div className="border-b border-slate-100 pb-3">
+    <section
+      className={`rounded-xl border border-slate-200/80 bg-white shadow-sm ring-1 ring-slate-100 ${pad} ${className}`}
+    >
+      <div className={`border-b border-slate-100 ${headPb}`}>
         <h2 className="text-base font-semibold tracking-tight text-slate-900">
           {title}
         </h2>
         {description ? (
-          <p className="mt-1 text-sm leading-relaxed text-slate-500">
+          <p
+            className={`${descMt} text-sm leading-relaxed text-slate-500`}
+          >
             {description}
           </p>
         ) : null}
       </div>
-      <div className="mt-5 space-y-5">{children}</div>
+      <div className={bodyGap}>{children}</div>
     </section>
   );
 }
@@ -91,7 +103,7 @@ export function FieldError({ message }: { message?: string }) {
 
 export function FormActions({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-6">
+    <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
       {children}
     </div>
   );
@@ -105,15 +117,18 @@ export function PrimaryButton({
   children,
   disabled,
   type = "button",
+  onClick,
 }: {
   children: ReactNode;
   disabled?: boolean;
   type?: "button" | "submit";
+  onClick?: () => void;
 }) {
   return (
     <button
       type={type}
       disabled={disabled}
+      onClick={onClick}
       className="inline-flex min-h-[42px] min-w-[120px] items-center justify-center rounded-lg bg-blue-600 px-5 text-sm font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {children}

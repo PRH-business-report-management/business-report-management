@@ -18,6 +18,9 @@ import { SecondaryButton } from "@/components/ui/FormPrimitives";
 import type { DailyReport, DirectoryUser } from "@/types/models";
 import { ReportDocumentIcon } from "@/components/ui/DocumentTypeIcons";
 import { useSeenStore } from "@/store/seenStore";
+import { useHandheldLines } from "@/hooks/useHandheldLines";
+import { handheldSnapshotForReport } from "@/lib/storage/handheldProjects";
+import { ReportsSubNav } from "@/components/reports/ReportsSubNav";
 
 export default function EditReportPage() {
   const visibilityMode = useDirectoryVisibilityStore((s) => s.mode);
@@ -29,6 +32,7 @@ export default function EditReportPage() {
   const authed = useIsAuthenticated();
   const { getToken } = useAccessToken();
   const user = useSessionStore((s) => s.user);
+  const { lines: handheldLines } = useHandheldLines(user?.id);
   const markReportSeen = useSeenStore((s) => s.markReportSeen);
   const router = useRouter();
   const [report, setReport] = useState<DailyReport | null>(null);
@@ -120,7 +124,7 @@ export default function EditReportPage() {
           submissionTargetId: values.submissionTargetId,
           totalWorkTime: values.totalWorkTime,
           tasks: values.tasks,
-          currentProjectLines: values.currentProjectLines,
+          currentProjectLines: handheldSnapshotForReport(handheldLines),
           tomorrowLines: values.tomorrowLines,
           summary: values.summary,
         }),
@@ -177,20 +181,23 @@ export default function EditReportPage() {
 
   return (
     <div className="space-y-8 pb-10">
-      <header className="flex gap-3">
-        <ReportDocumentIcon
-          className="mt-1 h-8 w-8 shrink-0 text-sky-600"
-          aria-hidden
-        />
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            業務報告書の編集
-          </h1>
-          <p className="mt-2 text-sm text-slate-600">
-            {isAuthor
-              ? "内容を更新したら「更新」を押してください。"
-              : "提出先として内容を確認・更新できます。更新すると SharePoint の同じ項目が保存されます。"}
-          </p>
+      <header className="flex flex-col gap-3">
+        <ReportsSubNav />
+        <div className="flex gap-3">
+          <ReportDocumentIcon
+            className="mt-1 h-8 w-8 shrink-0 text-sky-600"
+            aria-hidden
+          />
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+              業務報告書の編集
+            </h1>
+            <p className="mt-1 text-sm text-slate-600">
+              {isAuthor
+                ? "内容を更新したら「更新」を押してください。"
+                : "提出先として内容を確認・更新できます。更新すると SharePoint の同じ項目が保存されます。"}
+            </p>
+          </div>
         </div>
       </header>
       <DailyReportForm
@@ -200,6 +207,7 @@ export default function EditReportPage() {
         submitting={busy}
         userOptions={mergedUserOptions}
         authorDisplayName={authorDisplayName}
+        handheldLines={handheldLines}
         submitLabel="更新"
         formActionsExtra={
           <>

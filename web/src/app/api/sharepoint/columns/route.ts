@@ -2,18 +2,20 @@ import { bearerFromRequest } from "@/lib/graph/client";
 import { getEffectiveUser } from "@/lib/graph/effectiveUser";
 import {
   buildDailyReportFieldEnvLines,
+  buildHandheldFieldEnvLines,
   buildWorkInstructionFieldEnvLines,
   fetchListColumns,
 } from "@/lib/graph/listColumns";
 import {
   getListIdDailyReports,
+  getListIdHandheldProjects,
   getListIdWorkInstructions,
   getSharePointSiteId,
 } from "@/lib/graph/env";
 
 /**
  * SharePoint リストの列（内部名 name / 表示名 displayName）を Graph で取得。
- * list=daily | instructions。表示名がアプリ既定と一致する列について .env 用の行も返す。
+ * list=daily | instructions | handheld。表示名がアプリ既定と一致する列について .env 用の行も返す。
  */
 export async function GET(req: Request) {
   const token = bearerFromRequest(req);
@@ -26,12 +28,32 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url);
-  const which = url.searchParams.get("list") === "instructions" ? "instructions" : "daily";
+  const listParam = url.searchParams.get("list") ?? "daily";
+  const which =
+    listParam === "instructions"
+      ? "instructions"
+      : listParam === "handheld"
+        ? "handheld"
+        : "daily";
   const siteId = getSharePointSiteId();
-  const listId =
-    which === "instructions"
-      ? getListIdWorkInstructions()
-      : getListIdDailyReports();
+  let listId: string;
+  if (which === "instructions") {
+    listId = getListIdWorkInstructions();
+  } else if (which === "handheld") {
+    const hid = getListIdHandheldProjects();
+    if (!hid) {
+      return Response.json(
+        {
+          error:
+            "SHAREPOINT_LIST_HANDHELD_PROJECTS_ID が未設定です。手持ち案件用リストを作成してから ID を設定してください。",
+        },
+        { status: 400 }
+      );
+    }
+    listId = hid;
+  } else {
+    listId = getListIdDailyReports();
+  }
 
   try {
     const columns = await fetchListColumns(token, siteId, listId);
@@ -41,7 +63,9 @@ export async function GET(req: Request) {
     const envLines =
       which === "instructions"
         ? buildWorkInstructionFieldEnvLines(columns)
-        : buildDailyReportFieldEnvLines(columns);
+        : which === "handheld"
+          ? buildHandheldFieldEnvLines(columns)
+          : buildDailyReportFieldEnvLines(columns);
     return Response.json({
       list: which,
       columns: sorted,

@@ -14,6 +14,9 @@ import { useDirectoryVisibilityStore } from "@/store/directoryVisibilityStore";
 import type { DailyReport, DirectoryUser } from "@/types/models";
 import { ReportDocumentIcon } from "@/components/ui/DocumentTypeIcons";
 import { SubmitSuccessOverlay } from "@/components/ui/SubmitSuccessOverlay";
+import { useHandheldLines } from "@/hooks/useHandheldLines";
+import { handheldSnapshotForReport } from "@/lib/storage/handheldProjects";
+import { ReportsSubNav } from "@/components/reports/ReportsSubNav";
 
 function NewReportPageContent() {
   const searchParams = useSearchParams();
@@ -26,6 +29,7 @@ function NewReportPageContent() {
   const authed = useIsAuthenticated();
   const { getToken } = useAccessToken();
   const user = useSessionStore((s) => s.user);
+  const { lines: handheldLines } = useHandheldLines(user?.id);
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [userOptions, setUserOptions] = useState<DirectoryUser[]>([]);
@@ -106,7 +110,7 @@ function NewReportPageContent() {
           submissionTargetId: values.submissionTargetId,
           totalWorkTime: values.totalWorkTime,
           tasks: values.tasks,
-          currentProjectLines: values.currentProjectLines,
+          currentProjectLines: handheldSnapshotForReport(handheldLines),
           tomorrowLines: values.tomorrowLines,
           summary: values.summary,
         }),
@@ -137,20 +141,23 @@ function NewReportPageContent() {
       {successMessage ? (
         <SubmitSuccessOverlay message={successMessage} />
       ) : null}
-      <header className="flex gap-3">
-        <ReportDocumentIcon
-          className="mt-1 h-8 w-8 shrink-0 text-sky-600"
-          aria-hidden
-        />
-        <div className="min-w-0">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            {isDuplicate ? "業務報告書の作成（複製）" : "業務報告書の作成"}
-          </h1>
-          <p className="mt-2 text-sm text-slate-600">
-            {isDuplicate
-              ? "元の内容が入力済みです。必要に応じて編集し「保存する」で新しい項目として保存されます。"
-              : "SharePoint の「業務報告書」リストに保存されます。入力後は「保存する」を押してください。"}
-          </p>
+      <header className="flex flex-col gap-3">
+        <ReportsSubNav />
+        <div className="flex gap-3">
+          <ReportDocumentIcon
+            className="mt-1 h-8 w-8 shrink-0 text-sky-600"
+            aria-hidden
+          />
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">
+              {isDuplicate ? "業務報告書の作成（複製）" : "業務報告書の作成"}
+            </h1>
+            <p className="mt-1 text-sm text-slate-600">
+              {isDuplicate
+                ? "元の内容が入力済みです。必要に応じて編集し「保存する」で新しい項目として保存されます。"
+                : "SharePoint の「業務報告書」リストに保存されます。入力後は「保存する」を押してください。"}
+            </p>
+          </div>
         </div>
       </header>
       {dupErr ? (
@@ -168,6 +175,7 @@ function NewReportPageContent() {
           submitting={busy}
           userOptions={visibleUserOptions}
           authorDisplayName={user?.displayName ?? ""}
+          handheldLines={handheldLines}
         />
       )}
     </div>

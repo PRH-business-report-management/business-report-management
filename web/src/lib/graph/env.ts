@@ -29,3 +29,12 @@ export function getListIdAppUsers(): string | undefined {
   return v && v.length > 0 ? v : undefined;
 }
 
+/**
+ * 「手持ち案件」専用リスト（任意）。
+ * 設定すると別端末でも同期。未設定時はブラウザ localStorage のみ。
+ */
+export function getListIdHandheldProjects(): string | undefined {
+  const v = process.env.SHAREPOINT_LIST_HANDHELD_PROJECTS_ID?.trim();
+  return v && v.length > 0 ? v : undefined;
+}
+

@@ -17,6 +17,7 @@ import { DashboardConfirmLink } from "@/components/ui/dashboardConfirmLink";
 import { ListPagination } from "@/components/ui/ListPagination";
 import { ListSortTh, type ListSortDir } from "@/components/ui/ListSortTh";
 import { formatReportNumber } from "@/lib/serial/documentNumber";
+import { ReportsSubNav } from "@/components/reports/ReportsSubNav";
 
 const LIST_PAGE_SIZE = 20;
 
@@ -181,6 +182,7 @@ export default function ReportsListPage() {
 
   return (
     <div className="space-y-4">
+      <ReportsSubNav />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="flex items-center gap-2 text-xl font-semibold">
           <ReportDocumentIcon

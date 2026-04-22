@@ -177,7 +177,7 @@ function normalizeReportLine(x: unknown): ReportProjectLine {
 }
 
 /** 列値: JSON 配列 or 旧来のプレーンテキスト（HTML エンコードされた JSON にも対応） */
-function parseProjectLinesField(raw: unknown): ReportProjectLine[] {
+export function parseProjectLinesField(raw: unknown): ReportProjectLine[] {
   if (raw == null) return [];
   const str = decodeHtmlEntities(stripSharePointHtml(asString(raw).trim()));
   if (!str) return [];
@@ -225,7 +225,7 @@ function normalizeDailyTasks(tasks: DailyReport["tasks"]): DailyReport["tasks"] 
   }));
 }
 
-function serializeProjectLines(lines: ReportProjectLine[]): string {
+export function serializeProjectLines(lines: ReportProjectLine[]): string {
   return JSON.stringify(lines ?? []);
 }
 

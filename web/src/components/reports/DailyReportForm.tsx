@@ -4,20 +4,26 @@ import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useReactToPrint } from "react-to-print";
-import type { DailyReport, WorkStyle } from "@/types/models";
+import type { DailyReport, ReportProjectLine, WorkStyle } from "@/types/models";
 import { workStyleLabel } from "@/lib/instruction/workStyleLabel";
 import { safePdfFilenamePart } from "@/lib/pdf/safePdfFilename";
 import {
   isValidShiftClockHm,
   minutesBetween,
   minutesToHoursDecimal,
-  quarterHourSelectOptions,
-  shiftQuarterSelectOptions,
 } from "@/lib/time/duration";
 import { formatSlashDateTime } from "@/lib/time/formatJa";
+import { handheldSnapshotForReport } from "@/lib/storage/handheldProjects";
 import { DailyReportPrintDocument } from "./DailyReportPrintDocument";
+import { TimeHmSelects } from "./TimeHmSelects";
 import {
   FieldError,
   FieldLabel,
@@ -27,7 +33,6 @@ import {
   PrimaryButton,
   SecondaryButton,
   fieldInputClass,
-  fieldInputMultilineClass,
   fieldSelectClass,
   fieldTextareaClass,
 } from "@/components/ui/FormPrimitives";
@@ -67,7 +72,6 @@ const schema = z.object({
     .max(24),
   submissionTargetId: z.string().min(1, "提出先を選んでください"),
   tasks: z.array(taskSchema).min(1, "タスクを1件以上入力してください"),
-  currentProjectLines: z.array(projectLineSchema).min(1),
   tomorrowLines: z.array(projectLineSchema).min(1),
   summary: z.string(),
   totalWorkTime: z.number(),
@@ -90,6 +94,57 @@ function defaultProjectLine() {
   return { projectNumber: "", projectName: "", content: "" };
 }
 
+function lineHasPickableContent(l: ReportProjectLine): boolean {
+  return Boolean(
+    l.projectNumber?.trim() ||
+      l.projectName?.trim() ||
+      l.content?.trim()
+  );
+}
+
+function HandheldLinePicker({
+  lines,
+  onPick,
+}: {
+  lines: ReportProjectLine[];
+  onPick: (line: ReportProjectLine) => void;
+}) {
+  const ref = useRef<HTMLSelectElement>(null);
+  const pickable = lines.some(lineHasPickableContent);
+  return (
+    <div className="min-w-0">
+      <FieldLabel>手持ちから入力</FieldLabel>
+      <select
+        ref={ref}
+        className={fieldSelectClass}
+        defaultValue=""
+        disabled={!pickable}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (ref.current) ref.current.selectedIndex = 0;
+          if (!v) return;
+          const i = Number.parseInt(v, 10);
+          const line = lines[i];
+          if (!line || !lineHasPickableContent(line)) return;
+          onPick({ ...line });
+        }}
+      >
+        <option value="">
+          {pickable ? "選んでください" : "手持ち案件が未登録です"}
+        </option>
+        {lines.map((l, i) =>
+          lineHasPickableContent(l) ? (
+            <option key={i} value={i}>
+              {[l.projectNumber, l.projectName].filter((x) => x?.trim()).join(" ") ||
+                `行 ${i + 1}`}
+            </option>
+          ) : null
+        )}
+      </select>
+    </div>
+  );
+}
+
 type UserOption = { id: string; displayName: string; email: string };
 
 export function DailyReportForm({
@@ -100,6 +155,7 @@ export function DailyReportForm({
   authorDisplayName = "",
   submitLabel = "保存する",
   formActionsExtra,
+  handheldLines,
 }: {
   initial?: Partial<DailyReport> | null;
   onSubmit: (values: DailyReportFormValues) => Promise<void>;
@@ -112,6 +168,8 @@ export function DailyReportForm({
   submitLabel?: string;
   /** 送信の左隣に並べるボタンなど（例: 複製） */
   formActionsExtra?: ReactNode;
+  /** 手持ち案件タブで管理している一覧（ドロップダウン・印刷プレビュー用） */
+  handheldLines: ReportProjectLine[];
 }) {
   const printRef = useRef<HTMLDivElement>(null);
   const [printTitle, setPrintTitle] = useState("");
@@ -130,10 +188,6 @@ export function DailyReportForm({
           : 1,
       submissionTargetId: initial?.submissionTargetId ?? "",
       tasks: initial?.tasks?.length ? initial.tasks : [defaultTask()],
-      currentProjectLines:
-        initial?.currentProjectLines && initial.currentProjectLines.length > 0
-          ? initial.currentProjectLines
-          : [defaultProjectLine()],
       tomorrowLines:
         initial?.tomorrowLines && initial.tomorrowLines.length > 0
           ? initial.tomorrowLines
@@ -167,12 +221,6 @@ export function DailyReportForm({
     control: form.control,
     name: "tasks",
   });
-
-  const {
-    fields: currentFields,
-    append: appendCurrent,
-    remove: removeCurrent,
-  } = useFieldArray({ control: form.control, name: "currentProjectLines" });
 
   const {
     fields: tomorrowFields,
@@ -278,7 +326,7 @@ export function DailyReportForm({
       typeof watchedBreak === "number" && watchedBreak >= 0 ? watchedBreak : 1,
     totalWorkTime: form.watch("totalWorkTime"),
     tasks: form.watch("tasks"),
-    currentProjectLines: form.watch("currentProjectLines"),
+    currentProjectLines: handheldSnapshotForReport(handheldLines),
     tomorrowLines: form.watch("tomorrowLines"),
     summary: form.watch("summary"),
     createdAt: initial?.createdAt ?? "",
@@ -298,7 +346,7 @@ export function DailyReportForm({
   }, [watchedTasks]);
 
   return (
-    <FormShell>
+    <FormShell className="space-y-4">
       <form
         onSubmit={form.handleSubmit((v) => void onSubmit(v))}
         className="print:hidden"
@@ -307,11 +355,12 @@ export function DailyReportForm({
         <FormSection
           title="基本情報"
           description="記入者・提出先・報告日を入力します。提出先を選ぶと、その方のダッシュボードに業務報告書提出の通知が表示されます。"
+          dense
         >
-          <div className="grid gap-5 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <FieldLabel>記入者</FieldLabel>
-              <p className="mt-1.5 text-sm text-slate-800">
+              <p className="mt-1 text-sm text-slate-800">
                 {authorDisplayName.trim() || "—"}
               </p>
             </div>
@@ -334,7 +383,7 @@ export function DailyReportForm({
               </select>
               <FieldError message={errs.submissionTargetId?.message} />
             </div>
-            <div className="sm:col-span-2 space-y-2">
+            <div className="sm:col-span-2 space-y-1.5">
               <FieldLabel htmlFor="report-date" required>
                 報告日
               </FieldLabel>
@@ -350,7 +399,7 @@ export function DailyReportForm({
             {initial?.id && initial.id !== "preview" ? (
               <div className="sm:col-span-2">
                 <FieldLabel>更新日</FieldLabel>
-                <p className="mt-1.5 text-sm text-slate-800">
+                <p className="mt-1 text-sm text-slate-800">
                   {initial.submittedAt
                     ? formatSlashDateTime(initial.submittedAt)
                     : "—"}
@@ -371,39 +420,27 @@ export function DailyReportForm({
               <FieldError message={errs.workStyle?.message} />
             </div>
             <div>
-              <FieldLabel htmlFor="clock-in">出社時間</FieldLabel>
-              <select
-                id="clock-in"
-                className={fieldSelectClass}
-                {...form.register("clockInTime")}
-              >
-                <option value="">—</option>
-                {shiftQuarterSelectOptions(form.watch("clockInTime") ?? "").map(
-                  (opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  )
-                )}
-              </select>
+              <TimeHmSelects
+                idPrefix="clock-in"
+                label="出社時間"
+                value={form.watch("clockInTime") ?? ""}
+                onChange={(v) =>
+                  form.setValue("clockInTime", v, { shouldValidate: true })
+                }
+                variant="shift"
+              />
               <FieldError message={errs.clockInTime?.message as string} />
             </div>
             <div>
-              <FieldLabel htmlFor="clock-out">退勤時間</FieldLabel>
-              <select
-                id="clock-out"
-                className={fieldSelectClass}
-                {...form.register("clockOutTime")}
-              >
-                <option value="">—</option>
-                {shiftQuarterSelectOptions(
-                  form.watch("clockOutTime") ?? ""
-                ).map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
+              <TimeHmSelects
+                idPrefix="clock-out"
+                label="退勤時間"
+                value={form.watch("clockOutTime") ?? ""}
+                onChange={(v) =>
+                  form.setValue("clockOutTime", v, { shouldValidate: true })
+                }
+                variant="shift"
+              />
               <FieldError message={errs.clockOutTime?.message as string} />
             </div>
             <div className="sm:col-span-2">
@@ -426,7 +463,8 @@ export function DailyReportForm({
 
         <FormSection
           title="本日の業務内容"
-          description="案件ごとに作業時間を入力します。タスク行の稼働は開始・終了から算出します。"
+          description="案件ごとに作業時間を入力します。手持ち案件タブで登録した内容を、ドロップダウンから呼び出せます。"
+          dense
         >
           <div className="flex justify-end">
             <button
@@ -438,33 +476,40 @@ export function DailyReportForm({
             </button>
           </div>
           <FieldError message={errs.tasks?.message} />
-          <div className="space-y-4">
+          <div className="space-y-2">
             {fields.map((f, i) => (
               <div
                 key={f.id}
-                className="rounded-lg border border-slate-200 bg-slate-50/80 p-4"
+                className="rounded-lg border border-slate-200 bg-slate-50/80 p-3"
               >
-                <p className="mb-4 text-sm font-semibold text-blue-600">
+                <p className="mb-2 text-xs font-semibold text-blue-600">
                   タスク {i + 1}
                 </p>
-                <div className="flex flex-col gap-4">
-                  {/* 1行目: 番号 | 案件名 */}
-                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[minmax(5.5rem,7rem)_1fr]">
+                <div className="flex flex-col gap-2">
+                  <HandheldLinePicker
+                    lines={handheldLines}
+                    onPick={(line) => {
+                      form.setValue(`tasks.${i}.projectNumber`, line.projectNumber);
+                      form.setValue(`tasks.${i}.projectName`, line.projectName);
+                      form.setValue(`tasks.${i}.taskDetail`, line.content);
+                    }}
+                  />
+                  <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-[minmax(5rem,6.5rem)_1fr]">
                     <div className="min-w-0">
                       <FieldLabel className="whitespace-nowrap">
                         番号
                       </FieldLabel>
                       <input
                         maxLength={8}
-                        className={`${fieldInputClass} w-full max-w-[7rem] px-2 text-center text-sm`}
+                        className={`${fieldInputClass} w-full max-w-[6.5rem] px-2 text-center text-sm`}
                         {...form.register(`tasks.${i}.projectNumber`)}
                       />
                     </div>
                     <div className="min-w-0">
                       <FieldLabel required>案件名</FieldLabel>
-                      <textarea
-                        rows={2}
-                        className={fieldInputMultilineClass}
+                      <input
+                        type="text"
+                        className={fieldInputClass}
                         {...form.register(`tasks.${i}.projectName`)}
                       />
                       <FieldError
@@ -476,62 +521,39 @@ export function DailyReportForm({
                       />
                     </div>
                   </div>
-                  {/* 2行目: 開始 · 終了 · 稼働 */}
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
-                    <div className="min-w-0">
-                      <FieldLabel>開始</FieldLabel>
-                      <select
-                        className={fieldSelectClass}
-                        {...form.register(`tasks.${i}.startTime`)}
-                      >
-                        {quarterHourSelectOptions(
-                          form.watch(`tasks.${i}.startTime`) ?? ""
-                        ).map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
-                      <FieldError
-                        message={
-                          errs.tasks?.[i]?.startTime?.message as
-                            | string
-                            | undefined
-                        }
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <FieldLabel>終了</FieldLabel>
-                      <select
-                        className={fieldSelectClass}
-                        {...form.register(`tasks.${i}.endTime`)}
-                      >
-                        {quarterHourSelectOptions(
-                          form.watch(`tasks.${i}.endTime`) ?? ""
-                        ).map((opt) => (
-                          <option key={opt} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
-                      <FieldError
-                        message={
-                          errs.tasks?.[i]?.endTime?.message as
-                            | string
-                            | undefined
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col sm:min-w-[6rem]">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
+                    <TimeHmSelects
+                      idPrefix={`task-${i}-start`}
+                      label="開始"
+                      value={form.watch(`tasks.${i}.startTime`) ?? ""}
+                      onChange={(v) =>
+                        form.setValue(`tasks.${i}.startTime`, v, {
+                          shouldValidate: true,
+                        })
+                      }
+                      variant="task"
+                    />
+                    <TimeHmSelects
+                      idPrefix={`task-${i}-end`}
+                      label="終了"
+                      value={form.watch(`tasks.${i}.endTime`) ?? ""}
+                      onChange={(v) =>
+                        form.setValue(`tasks.${i}.endTime`, v, {
+                          shouldValidate: true,
+                        })
+                      }
+                      variant="task"
+                    />
+                    <div className="flex flex-col sm:min-w-[5rem]">
                       <span className="text-xs text-slate-500">稼働</span>
-                      <span className="text-lg font-semibold tabular-nums text-slate-800">
+                      <span className="text-base font-semibold tabular-nums text-slate-800">
                         {minutesToHoursDecimal(watchedTasks[i]?.duration ?? 0)}
-                        <span className="ml-0.5 text-sm font-normal">h</span>
+                        <span className="ml-0.5 text-xs font-normal">h</span>
                       </span>
                       {fields.length > 1 && (
                         <button
                           type="button"
-                          className="mt-2 text-left text-xs text-red-600 hover:underline sm:whitespace-nowrap"
+                          className="mt-1 text-left text-xs text-red-600 hover:underline sm:whitespace-nowrap"
                           onClick={() => remove(i)}
                         >
                           この行を削除
@@ -539,11 +561,20 @@ export function DailyReportForm({
                       )}
                     </div>
                   </div>
-                  {/* 3行目: 内容 */}
+                  <FieldError
+                    message={
+                      errs.tasks?.[i]?.startTime?.message as string | undefined
+                    }
+                  />
+                  <FieldError
+                    message={
+                      errs.tasks?.[i]?.endTime?.message as string | undefined
+                    }
+                  />
                   <div className="min-w-0">
                     <FieldLabel>内容</FieldLabel>
                     <textarea
-                      rows={5}
+                      rows={2}
                       className={fieldTextareaClass}
                       {...form.register(`tasks.${i}.taskDetail`)}
                     />
@@ -552,7 +583,7 @@ export function DailyReportForm({
               </div>
             ))}
           </div>
-          <div className="space-y-2 rounded-lg bg-blue-50/80 px-4 py-3 text-slate-800">
+          <div className="space-y-1 rounded-md bg-blue-50/80 px-3 py-2 text-slate-800">
             <div className="flex justify-between text-sm">
               <span>タスク合計（稼働）</span>
               <span className="tabular-nums font-medium">
@@ -573,77 +604,10 @@ export function DailyReportForm({
         </FormSection>
 
         <FormSection
-          title="現在の手持ち案件"
-          description="番号・案件名・内容を行で追加できます。"
-        >
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={() => appendCurrent(defaultProjectLine())}
-              className="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
-            >
-              ＋ 行を追加
-            </button>
-          </div>
-          <FieldError message={errs.currentProjectLines?.message as string} />
-          <div className="space-y-4">
-            {currentFields.map((f, i) => (
-              <div
-                key={f.id}
-                className="rounded-lg border border-slate-200 bg-slate-50/80 p-4"
-              >
-                <p className="mb-4 text-sm font-semibold text-slate-600">
-                  行 {i + 1}
-                </p>
-                <div className="flex flex-col gap-4">
-                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[minmax(5.5rem,7rem)_1fr]">
-                    <div className="min-w-0">
-                      <FieldLabel className="whitespace-nowrap">
-                        番号
-                      </FieldLabel>
-                      <input
-                        maxLength={8}
-                        className={`${fieldInputClass} w-full max-w-[7rem] px-2 text-center text-sm`}
-                        {...form.register(`currentProjectLines.${i}.projectNumber`)}
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <FieldLabel>案件名</FieldLabel>
-                      <textarea
-                        rows={2}
-                        className={fieldInputMultilineClass}
-                        {...form.register(`currentProjectLines.${i}.projectName`)}
-                      />
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <FieldLabel>内容</FieldLabel>
-                    <textarea
-                      rows={5}
-                      className={fieldTextareaClass}
-                      {...form.register(`currentProjectLines.${i}.content`)}
-                    />
-                  </div>
-                  {currentFields.length > 1 && (
-                    <div>
-                      <button
-                        type="button"
-                        className="text-xs text-red-600 hover:underline"
-                        onClick={() => removeCurrent(i)}
-                      >
-                        この行を削除
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </FormSection>
-
-        <FormSection
           title="明日の作業予定"
-          description="番号・案件名・内容を行で追加できます。"
+          description="番号・案件名・内容を行で追加できます。手持ち案件タブの内容をドロップダウンから呼び出せます。"
+          dense
+          className="border-pink-100/80 bg-pink-50/70 ring-pink-100/60"
         >
           <div className="flex justify-end">
             <button
@@ -655,32 +619,46 @@ export function DailyReportForm({
             </button>
           </div>
           <FieldError message={errs.tomorrowLines?.message as string} />
-          <div className="space-y-4">
+          <div className="space-y-2">
             {tomorrowFields.map((f, i) => (
               <div
                 key={f.id}
-                className="rounded-lg border border-slate-200 bg-slate-50/80 p-4"
+                className="rounded-lg border border-pink-100/90 bg-white/80 p-3"
               >
-                <p className="mb-4 text-sm font-semibold text-slate-600">
+                <p className="mb-2 text-xs font-semibold text-slate-600">
                   行 {i + 1}
                 </p>
-                <div className="flex flex-col gap-4">
-                  <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[minmax(5.5rem,7rem)_1fr]">
+                <div className="flex flex-col gap-2">
+                  <HandheldLinePicker
+                    lines={handheldLines}
+                    onPick={(line) => {
+                      form.setValue(
+                        `tomorrowLines.${i}.projectNumber`,
+                        line.projectNumber
+                      );
+                      form.setValue(
+                        `tomorrowLines.${i}.projectName`,
+                        line.projectName
+                      );
+                      form.setValue(`tomorrowLines.${i}.content`, line.content);
+                    }}
+                  />
+                  <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-[minmax(5rem,6.5rem)_1fr]">
                     <div className="min-w-0">
                       <FieldLabel className="whitespace-nowrap">
                         番号
                       </FieldLabel>
                       <input
                         maxLength={8}
-                        className={`${fieldInputClass} w-full max-w-[7rem] px-2 text-center text-sm`}
+                        className={`${fieldInputClass} w-full max-w-[6.5rem] px-2 text-center text-sm`}
                         {...form.register(`tomorrowLines.${i}.projectNumber`)}
                       />
                     </div>
                     <div className="min-w-0">
                       <FieldLabel>案件名</FieldLabel>
-                      <textarea
-                        rows={2}
-                        className={fieldInputMultilineClass}
+                      <input
+                        type="text"
+                        className={fieldInputClass}
                         {...form.register(`tomorrowLines.${i}.projectName`)}
                       />
                     </div>
@@ -688,7 +666,7 @@ export function DailyReportForm({
                   <div className="min-w-0">
                     <FieldLabel>内容</FieldLabel>
                     <textarea
-                      rows={5}
+                      rows={2}
                       className={fieldTextareaClass}
                       {...form.register(`tomorrowLines.${i}.content`)}
                     />
@@ -713,11 +691,12 @@ export function DailyReportForm({
         <FormSection
           title="備考（成果・問題・改善点）"
           description="業務上の成果、課題、次に試したい改善などを自由に記入してください。"
+          dense
         >
           <div>
             <FieldLabel>内容</FieldLabel>
             <textarea
-              rows={5}
+              rows={3}
               className={fieldTextareaClass}
               {...form.register("summary")}
             />
