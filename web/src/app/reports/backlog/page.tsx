@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { useIsAuthenticated } from "@azure/msal-react";
 import { useSessionStore } from "@/store/sessionStore";
 import { useHandheldLines } from "@/hooks/useHandheldLines";
-import { useAccessToken } from "@/hooks/useAccessToken";
-import { authenticatedFetch } from "@/lib/api/authenticatedFetch";
 import { defaultHandheldLine } from "@/lib/storage/handheldProjects";
 import { ReportsSubNav } from "@/components/reports/ReportsSubNav";
 import {
@@ -21,7 +19,6 @@ export default function HandheldBacklogPage() {
   const authed = useIsAuthenticated();
   const user = useSessionStore((s) => s.user);
   const router = useRouter();
-  const { getToken } = useAccessToken();
   const {
     lines,
     setLines,
@@ -33,9 +30,6 @@ export default function HandheldBacklogPage() {
     clearSaveError,
   } = useHandheldLines(user?.id);
   const [savedNote, setSavedNote] = useState(false);
-  const [setupBusy, setSetupBusy] = useState(false);
-  const [setupText, setSetupText] = useState<string | null>(null);
-  const [setupErr, setSetupErr] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authed) router.replace("/login");
@@ -62,34 +56,6 @@ export default function HandheldBacklogPage() {
   if (!user)
     return <p className="text-sm text-zinc-500">読み込み中…</p>;
 
-  async function fetchHandheldColumnEnvLines() {
-    setSetupBusy(true);
-    setSetupErr(null);
-    setSetupText(null);
-    try {
-      const res = await authenticatedFetch(
-        getToken,
-        "/api/sharepoint/columns?list=handheld"
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        setSetupErr(
-          typeof data.error === "string" ? data.error : JSON.stringify(data)
-        );
-        return;
-      }
-      const lines = Array.isArray(data.envLines) ? data.envLines : [];
-      const header =
-        "# 手持ち案件リスト: Vercel の Environment Variables（Production）に追加";
-      const block = `${header}\n${lines.join("\n")}\n`;
-      setSetupText(block);
-    } catch (e) {
-      setSetupErr(e instanceof Error ? e.message : "エラー");
-    } finally {
-      setSetupBusy(false);
-    }
-  }
-
   return (
     <div className="space-y-4 pb-8">
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -114,28 +80,6 @@ export default function HandheldBacklogPage() {
                       ? " SharePoint の同期確認に失敗しました。いったんこの端末の内容を表示しています（環境変数・権限・ネットワークをご確認ください）。"
                       : " SharePoint の同期設定が未設定のため、この端末（ブラウザ）にのみ保存されます。別端末でも使うには env.example の「手持ち案件リスト」を設定してください。"}
               </p>
-              <div className="mt-2">
-                <button
-                  type="button"
-                  disabled={setupBusy}
-                  onClick={() => void fetchHandheldColumnEnvLines()}
-                  className="text-xs font-medium text-blue-700 hover:underline disabled:opacity-50"
-                >
-                  {setupBusy
-                    ? "列設定を取得中…"
-                    : "列の内部名（envLines）を取得する"}
-                </button>
-              </div>
-              {setupErr ? (
-                <p className="mt-2 text-xs text-red-600" role="alert">
-                  {setupErr}
-                </p>
-              ) : null}
-              {setupText ? (
-                <pre className="mt-2 max-h-48 overflow-auto rounded bg-white p-2 text-[11px] text-zinc-800 whitespace-pre-wrap break-all">
-                  {setupText}
-                </pre>
-              ) : null}
             </div>
           </div>
         </div>

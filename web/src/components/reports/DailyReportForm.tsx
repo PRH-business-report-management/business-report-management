@@ -138,7 +138,9 @@ function HandheldLinePicker({
         }}
       >
         <option value="">
-          {pickable ? "選んでください" : "手持ち案件が未登録です"}
+          {pickable
+            ? "手持ちから入力（クリックして選択）"
+            : "手持ち案件が未登録です"}
         </option>
         {lines.map((l, i) =>
           lineHasPickableContent(l) ? (
