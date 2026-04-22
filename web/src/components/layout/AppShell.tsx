@@ -5,8 +5,9 @@ import { usePathname } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
 import { DevImpersonationBar } from "@/components/dev/DevImpersonationBar";
 import { useSessionStore } from "@/store/sessionStore";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { ConfirmLink } from "@/components/ui/ConfirmLink";
+import { useUnsavedChangesStore } from "@/store/unsavedChangesStore";
 import {
   InstructionDocumentIcon,
   ReportDocumentIcon,
@@ -52,6 +53,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   const showDevNav =
     typeof process.env.NODE_ENV !== "undefined" &&
     process.env.NODE_ENV === "development";
+
+  // 画面遷移が完了したら「未保存」状態を解除（次の画面で毎回確認が出るのを防ぐ）
+  useEffect(() => {
+    useUnsavedChangesStore.getState().reset();
+  }, [pathname]);
 
   async function logout() {
     await instance.logoutPopup({
