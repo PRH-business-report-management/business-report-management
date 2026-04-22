@@ -148,11 +148,14 @@ function HandheldLinePicker({
           setQ("");
           setOpen(true);
         }}
-        className={`${fieldSelectClass} text-left disabled:opacity-50`}
+        className="mt-1.5 inline-flex min-h-[42px] w-full items-center justify-between rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm font-medium text-slate-800 shadow-sm transition hover:bg-slate-50 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        {pickable ? "手持ちから選ぶ…" : "手持ち案件が未登録です"}
+        <span>{pickable ? "手持ちから入力" : "手持ち案件が未登録です"}</span>
+        {pickable ? (
+          <span className="text-xs font-normal text-slate-500">選択</span>
+        ) : null}
       </button>
 
       {open ? (
