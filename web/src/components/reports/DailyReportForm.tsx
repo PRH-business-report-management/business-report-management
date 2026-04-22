@@ -117,40 +117,135 @@ function HandheldLinePicker({
   lines: ReportProjectLine[];
   onPick: (line: ReportProjectLine) => void;
 }) {
-  const ref = useRef<HTMLSelectElement>(null);
-  const pickable = lines.some(lineHasPickableContent);
+  const pickableLines = useMemo(
+    () => lines.filter(lineHasPickableContent),
+    [lines]
+  );
+  const pickable = pickableLines.length > 0;
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const listId = useMemo(
+    () => `handheld-picker-${Math.random().toString(36).slice(2)}`,
+    []
+  );
+
+  const filtered = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    if (!query) return pickableLines;
+    return pickableLines.filter((l) => {
+      const s = `${l.projectNumber} ${l.projectName}`.toLowerCase();
+      return s.includes(query);
+    });
+  }, [pickableLines, q]);
+
   return (
     <div className="min-w-0">
       <FieldLabel>手持ちから入力</FieldLabel>
-      <select
-        ref={ref}
-        className={fieldSelectClass}
-        defaultValue=""
+      <button
+        type="button"
         disabled={!pickable}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (ref.current) ref.current.selectedIndex = 0;
-          if (!v) return;
-          const i = Number.parseInt(v, 10);
-          const line = lines[i];
-          if (!line || !lineHasPickableContent(line)) return;
-          onPick({ ...line });
+        onClick={() => {
+          setQ("");
+          setOpen(true);
         }}
+        className={`${fieldSelectClass} text-left disabled:opacity-50`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
       >
-        <option value="">
-          {pickable
-            ? "手持ちから入力（クリックして選択）"
-            : "手持ち案件が未登録です"}
-        </option>
-        {lines.map((l, i) =>
-          lineHasPickableContent(l) ? (
-            <option key={i} value={i}>
-              {[l.projectNumber, l.projectName].filter((x) => x?.trim()).join(" ") ||
-                `行 ${i + 1}`}
-            </option>
-          ) : null
-        )}
-      </select>
+        {pickable ? "手持ちから選ぶ…" : "手持ち案件が未登録です"}
+      </button>
+
+      {open ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="手持ち案件から選択"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setOpen(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setOpen(false);
+          }}
+        >
+          <div className="w-full max-w-lg rounded-lg border border-slate-200 bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-slate-900">
+                  手持ち案件から選択
+                </p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  選ぶと、番号・案件名を入力欄に反映します。
+                </p>
+              </div>
+              <button
+                type="button"
+                className="text-sm text-slate-600 hover:text-slate-900"
+                onClick={() => setOpen(false)}
+              >
+                閉じる
+              </button>
+            </div>
+
+            <div className="p-4">
+              <input
+                autoFocus
+                className={fieldInputClass}
+                placeholder="検索（番号 / 案件名）"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                aria-controls={listId}
+              />
+
+              <div
+                id={listId}
+                className="mt-3 max-h-[50vh] overflow-auto rounded-md border border-slate-200"
+              >
+                {filtered.length === 0 ? (
+                  <p className="p-3 text-sm text-slate-600">
+                    該当する手持ち案件がありません。
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-slate-100">
+                    {filtered.map((l, idx) => {
+                      const title =
+                        [l.projectNumber, l.projectName]
+                          .filter((x) => x?.trim())
+                          .join(" ") || `行 ${idx + 1}`;
+                      return (
+                        <li key={`${l.projectNumber}-${l.projectName}-${idx}`}>
+                          <button
+                            type="button"
+                            className="w-full px-3 py-2 text-left hover:bg-slate-50"
+                            onClick={() => {
+                              onPick({ ...l });
+                              setOpen(false);
+                            }}
+                          >
+                            <p className="text-sm font-medium text-slate-900">
+                              {title}
+                            </p>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  className="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-50"
+                  onClick={() => setOpen(false)}
+                >
+                  キャンセル
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
